@@ -1,41 +1,31 @@
 
-# DroneOps QA V0.8A Supabase Cloud Prototype
+# DroneOps QA V0.9 Validation Demo
 
-This version stores app data in Supabase instead of local CSV files.
+This version is intended for sharing a validation demo link with selected testers.
 
-## 1. Add Supabase credentials
+## New in V0.9
 
-Create this file inside the project folder:
+- Optional demo password
+- Optional admin password for demo reset
+- Better product brief
+- Validation feedback page
+- QR workflow page
+- Safer empty-table handling
+- Clearer warnings that this is not production software
 
-```text
-.streamlit/secrets.toml
-```
+## Required Streamlit secrets
 
-Use this structure:
+Add these in Streamlit Cloud > App settings > Secrets:
 
 ```toml
 SUPABASE_URL = "https://your-project-id.supabase.co"
-SUPABASE_KEY = "your-anon-or-publishable-key"
+SUPABASE_KEY = "your-publishable-key"
+
+# Optional but recommended before sharing:
+DEMO_PASSWORD = "choose-a-demo-password"
+ADMIN_PASSWORD = "choose-a-separate-admin-password"
 ```
 
-Do not commit real keys to GitHub.
+## Supabase table required for feedback
 
-## 2. Run locally
-
-```bash
-cd DroneOps_QA_V0_8_Supabase
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-streamlit run app.py
-```
-
-## 3. Deploy later on Streamlit Cloud
-
-Add the same secrets in Streamlit Cloud under:
-
-App settings > Secrets
-
-## Security note
-
-This is a demo. Before sharing with real companies, add authentication, Row Level Security and role-based permissions.
+Run the SQL in `SUPABASE_FEEDBACK_TABLE.sql`.

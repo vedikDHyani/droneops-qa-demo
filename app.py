@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import date, datetime
 from supabase import create_client
 
-st.set_page_config(page_title="DroneOps QA Cloud Demo", page_icon="🛩️", layout="wide")
+st.set_page_config(page_title="DroneOps QA Validation Demo", page_icon="🛩️", layout="wide")
 
 STATUS = ["Ready", "Limited", "Not Ready", "Under Maintenance", "Retired"]
 CHECK = ["Pass", "Fail", "Needs Review"]
@@ -47,14 +47,20 @@ SEED = {
     ],
 }
 
+def secret_value(name, default=""):
+    try:
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
 @st.cache_resource
 def get_supabase():
     try:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
     except Exception:
-        st.error("Missing Supabase credentials. Add them to `.streamlit/secrets.toml`.")
-        st.code('SUPABASE_URL = "https://your-project-id.supabase.co"\nSUPABASE_KEY = "your-anon-or-publishable-key"')
+        st.error("Missing Supabase credentials. Add them in Streamlit Secrets.")
+        st.code('SUPABASE_URL = "https://your-project-id.supabase.co"\nSUPABASE_KEY = "your-publishable-key"')
         st.stop()
     return create_client(url, key)
 
@@ -81,6 +87,11 @@ def next_id(prefix, df, col):
                 except Exception:
                     pass
     return f"{prefix}-{max(nums + [0]) + 1:03d}"
+
+def safe_counts(df, col, values):
+    if col not in df.columns:
+        return pd.Series([0] * len(values), index=values)
+    return df[col].value_counts().reindex(values, fill_value=0)
 
 def kpis(drones, batteries, flights, issues):
     total = len(drones)
@@ -109,7 +120,7 @@ def reset_demo():
 def report_text(drones, batteries, flights, inspections, issues):
     total, ready, limited, not_ready, open_issues, critical, battery_review, hours, readiness = kpis(drones, batteries, flights, issues)
     lines = [
-        "# DroneOps QA Cloud Readiness Report",
+        "# DroneOps QA Validation Readiness Report",
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
         "## KPIs",
@@ -126,27 +137,65 @@ def report_text(drones, batteries, flights, inspections, issues):
         "## Drone Status",
     ]
     for _, r in drones.iterrows():
-        lines.append(f"- {r['drone_id']}: {r['drone_name']}, {r['current_status']}, next inspection {r['next_inspection_due']}")
+        lines.append(f"- {r.get('drone_id','')}: {r.get('drone_name','')}, {r.get('current_status','')}, next inspection {r.get('next_inspection_due','')}")
     return "\n".join(lines)
+
+def require_demo_access():
+    demo_password = secret_value("DEMO_PASSWORD", "")
+    if not demo_password:
+        return
+    if st.session_state.get("demo_access_granted"):
+        return
+    st.markdown('<div class="big-title">DroneOps QA</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Validation demo access</div>', unsafe_allow_html=True)
+    st.info("Enter the demo password to access the prototype.")
+    with st.form("demo_login"):
+        pw = st.text_input("Demo password", type="password")
+        submitted = st.form_submit_button("Enter demo")
+    if submitted and pw == demo_password:
+        st.session_state.demo_access_granted = True
+        st.rerun()
+    elif submitted:
+        st.error("Incorrect password.")
+    st.stop()
+
+def admin_ok():
+    admin_password = secret_value("ADMIN_PASSWORD", "")
+    if not admin_password:
+        return True
+    return st.session_state.get("admin_access_granted", False)
 
 st.markdown("""
 <style>
 .block-container {padding-top: 1.4rem;}
-.big-title {font-size: 38px; font-weight: 800;}
-.subtitle {color: #64748b; margin-bottom: 1.2rem;}
-.section {font-size: 22px; font-weight: 700; margin-top: 1.2rem;}
+.big-title {font-size: 40px; font-weight: 850;}
+.subtitle {color: #64748b; margin-bottom: 1.2rem; font-size: 16px;}
+.section {font-size: 22px; font-weight: 750; margin-top: 1.2rem;}
+.small-note {color: #64748b; font-size: 13px;}
+.hero-card {
+    padding: 1rem 1.2rem;
+    border-radius: 14px;
+    border: 1px solid rgba(148,163,184,0.25);
+    background: rgba(148,163,184,0.08);
+}
 </style>
 """, unsafe_allow_html=True)
 
+require_demo_access()
+
 st.sidebar.title("DroneOps QA")
-st.sidebar.caption("Cloud Prototype V0.8A")
+st.sidebar.caption("Validation Demo V0.9")
+if st.sidebar.button("Refresh data"):
+    st.rerun()
+
 page = st.sidebar.radio("Navigation", [
     "Product Brief", "Fleet Dashboard", "Drone Register", "Battery Management",
-    "Inspection Form", "Flight Log Form", "Maintenance Issue Form", "Readiness Report", "Demo Controls"
+    "Inspection Form", "Flight Log Form", "Maintenance Issue Form",
+    "Readiness Report", "Validation Feedback", "QR Workflow", "Demo Controls"
 ])
 
 st.markdown('<div class="big-title">DroneOps QA</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Cloud-database prototype for drone readiness, battery health, inspections, flight logs and maintenance traceability.</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Validation demo for drone fleet readiness, battery health, inspections, flight logs and maintenance traceability.</div>', unsafe_allow_html=True)
 
 try:
     drones = fetch("drones")
@@ -160,9 +209,15 @@ except Exception as e:
     st.stop()
 
 if page == "Product Brief":
-    st.markdown('<div class="section">V0.8A: Cloud database version</div>', unsafe_allow_html=True)
-    st.write("This version stores data in Supabase instead of local CSV files. Anyone using the deployed app works from the same central database.")
-    st.warning("This is still a demo. Before wider sharing, add authentication, Row Level Security and role-based access.")
+    st.markdown('<div class="section">What problem this solves</div>', unsafe_allow_html=True)
+    st.write("Drone teams often manage aircraft status, inspection results, battery health and maintenance issues across separate spreadsheets, chats or paper records. That creates readiness uncertainty before missions.")
+    c1, c2, c3 = st.columns(3)
+    c1.markdown('<div class="hero-card"><b>Readiness</b><br>Know which drones are ready, limited or grounded.</div>', unsafe_allow_html=True)
+    c2.markdown('<div class="hero-card"><b>Traceability</b><br>Connect inspections, maintenance issues and flight records.</div>', unsafe_allow_html=True)
+    c3.markdown('<div class="hero-card"><b>Battery control</b><br>Track health, cycle count and availability.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section">Validation goal</div>', unsafe_allow_html=True)
+    st.write("This version is for testing whether drone operators consider the workflow useful enough to adopt, not for production deployment.")
+    st.warning("This demo uses a shared database. Do not enter confidential or real operational data.")
 
 elif page == "Fleet Dashboard":
     total, ready, limited, not_ready, open_issues, critical, battery_review, hours, readiness = kpis(drones, batteries, flights, issues)
@@ -177,15 +232,17 @@ elif page == "Fleet Dashboard":
     left, right = st.columns(2)
     with left:
         st.markdown('<div class="section">Drone readiness</div>', unsafe_allow_html=True)
-        st.bar_chart(drones["current_status"].value_counts().reindex(STATUS, fill_value=0))
+        st.bar_chart(safe_counts(drones, "current_status", STATUS))
     with right:
         st.markdown('<div class="section">Battery health</div>', unsafe_allow_html=True)
-        st.bar_chart(batteries["health_status"].value_counts().reindex(["Good", "Needs Review", "Weak", "Replace"], fill_value=0))
+        st.bar_chart(safe_counts(batteries, "health_status", ["Good", "Needs Review", "Weak", "Replace"]))
 
     st.markdown('<div class="section">Fleet status</div>', unsafe_allow_html=True)
-    st.dataframe(drones[["drone_id","drone_name","model","assigned_pilot","location","next_inspection_due","current_status","notes"]], use_container_width=True, hide_index=True)
+    show_cols = [c for c in ["drone_id","drone_name","model","assigned_pilot","location","next_inspection_due","current_status","notes"] if c in drones.columns]
+    st.dataframe(drones[show_cols], use_container_width=True, hide_index=True)
     st.markdown('<div class="section">Open maintenance issues</div>', unsafe_allow_html=True)
-    st.dataframe(issues[issues["status"].isin(["Open", "In Progress", "On Hold"])], use_container_width=True, hide_index=True)
+    if "status" in issues.columns:
+        st.dataframe(issues[issues["status"].isin(["Open", "In Progress", "On Hold"])], use_container_width=True, hide_index=True)
 
 elif page == "Drone Register":
     tab1, tab2 = st.tabs(["Update drone", "Add new drone"])
@@ -193,13 +250,14 @@ elif page == "Drone Register":
         st.dataframe(drones, use_container_width=True, hide_index=True)
         with st.form("update_drone"):
             drone_id = st.selectbox("Drone ID", drones["drone_id"].tolist())
-            current = drones.loc[drones["drone_id"] == drone_id, "current_status"].iloc[0]
+            row = drones.loc[drones["drone_id"] == drone_id].iloc[0]
+            current = row["current_status"]
             status = st.selectbox("Status", STATUS, index=STATUS.index(current) if current in STATUS else 0)
-            location = st.text_input("Location", drones.loc[drones["drone_id"] == drone_id, "location"].iloc[0])
-            notes = st.text_area("Notes", drones.loc[drones["drone_id"] == drone_id, "notes"].iloc[0])
+            location = st.text_input("Location", row["location"])
+            notes = st.text_area("Notes", row["notes"])
             if st.form_submit_button("Update drone"):
                 update("drones", "drone_id", drone_id, {"current_status": status, "location": location, "notes": notes})
-                st.success("Drone updated in Supabase.")
+                st.success("Drone updated.")
     with tab2:
         with st.form("add_drone"):
             drone_id = st.text_input("Drone ID", next_id("DRN", drones, "drone_id"))
@@ -214,7 +272,7 @@ elif page == "Drone Register":
             notes = st.text_area("Notes")
             if st.form_submit_button("Add drone"):
                 insert("drones", {"drone_id": drone_id, "drone_name": drone_name, "manufacturer": manufacturer, "model": model, "owner_team": owner_team, "assigned_pilot": pilot, "location": location, "next_inspection_due": str(due), "current_status": status, "notes": notes})
-                st.success("Drone added to Supabase.")
+                st.success("Drone added.")
 
 elif page == "Battery Management":
     tab1, tab2 = st.tabs(["Update battery", "Add new battery"])
@@ -223,13 +281,15 @@ elif page == "Battery Management":
         with st.form("update_battery"):
             battery_id = st.selectbox("Battery ID", batteries["battery_id"].tolist())
             old = batteries.loc[batteries["battery_id"] == battery_id].iloc[0]
-            health = st.selectbox("Health Status", ["Good","Needs Review","Weak","Replace"], index=["Good","Needs Review","Weak","Replace"].index(old["health_status"]) if old["health_status"] in ["Good","Needs Review","Weak","Replace"] else 0)
-            status = st.selectbox("Current Status", ["Available","In Use","Charging","Damaged","Retired"], index=["Available","In Use","Charging","Damaged","Retired"].index(old["current_status"]) if old["current_status"] in ["Available","In Use","Charging","Damaged","Retired"] else 0)
+            health_opts = ["Good","Needs Review","Weak","Replace"]
+            status_opts = ["Available","In Use","Charging","Damaged","Retired"]
+            health = st.selectbox("Health Status", health_opts, index=health_opts.index(old["health_status"]) if old["health_status"] in health_opts else 0)
+            status = st.selectbox("Current Status", status_opts, index=status_opts.index(old["current_status"]) if old["current_status"] in status_opts else 0)
             cycle = st.number_input("Cycle Count", min_value=0, value=int(old["cycle_count"]))
             notes = st.text_area("Notes", old["notes"])
             if st.form_submit_button("Update battery"):
                 update("batteries", "battery_id", battery_id, {"health_status": health, "current_status": status, "cycle_count": int(cycle), "notes": notes})
-                st.success("Battery updated in Supabase.")
+                st.success("Battery updated.")
     with tab2:
         with st.form("add_battery"):
             battery_id = st.text_input("Battery ID", next_id("BAT", batteries, "battery_id"))
@@ -242,9 +302,10 @@ elif page == "Battery Management":
             notes = st.text_area("Notes")
             if st.form_submit_button("Add battery"):
                 insert("batteries", {"battery_id": battery_id, "compatible_drone_id": drone_id, "battery_type": btype, "cycle_count": int(cycle), "health_status": health, "current_status": status, "storage_location": storage, "notes": notes})
-                st.success("Battery added to Supabase.")
+                st.success("Battery added.")
 
 elif page == "Inspection Form":
+    st.info("Demo scenario: set Motor Check = Fail and Final Result = Fail. The selected drone will be marked Not Ready.")
     with st.form("inspection"):
         d = st.date_input("Inspection Date", date.today())
         drone_id = st.selectbox("Drone ID", drones["drone_id"].tolist())
@@ -265,7 +326,7 @@ elif page == "Inspection Form":
             insert("inspections", {"inspection_id": inspection_id, "inspection_date": str(d), "drone_id": drone_id, "battery_id": battery_id, "pre_flight_check": pre, "propeller_check": prop, "motor_check": motor, "camera_check": camera, "gps_check": gps, "controller_check": controller, "damage_found": damage, "inspector": inspector, "final_result": final, "notes": notes})
             if auto and final == "Fail":
                 update("drones", "drone_id", drone_id, {"current_status": "Not Ready"})
-            st.success("Inspection saved to Supabase.")
+            st.success("Inspection saved.")
 
 elif page == "Flight Log Form":
     with st.form("flight"):
@@ -283,9 +344,10 @@ elif page == "Flight Log Form":
         if st.form_submit_button("Submit flight log"):
             flight_id = next_id("FLT", flights, "flight_id")
             insert("flights", {"flight_id": flight_id, "flight_date": str(d), "drone_id": drone_id, "battery_id": battery_id, "pilot_name": pilot, "mission_type": mission, "flight_duration_min": int(duration), "location": location, "pre_flight_result": pre, "post_flight_result": post, "issue_reported": issue, "remarks": remarks})
-            st.success("Flight log saved to Supabase.")
+            st.success("Flight log saved.")
 
 elif page == "Maintenance Issue Form":
+    st.info("Demo scenario: create a Critical Open issue. The selected drone will be marked Not Ready.")
     with st.form("issue"):
         d = st.date_input("Date Reported", date.today())
         drone_id = st.selectbox("Drone ID", drones["drone_id"].tolist())
@@ -301,15 +363,64 @@ elif page == "Maintenance Issue Form":
             insert("maintenance_issues", {"issue_id": issue_id, "date_reported": str(d), "drone_id": drone_id, "issue_type": issue_type, "severity": severity, "action_required": action, "responsible_person": person, "status": status, "closure_date": None, "notes": notes})
             if auto and status != "Closed" and severity in ["High", "Critical"]:
                 update("drones", "drone_id", drone_id, {"current_status": "Not Ready"})
-            st.success("Maintenance issue saved to Supabase.")
+            st.success("Maintenance issue saved.")
 
 elif page == "Readiness Report":
     txt = report_text(drones, batteries, flights, inspections, issues)
     st.text_area("Report preview", txt, height=420)
-    st.download_button("Download report", txt, f"DroneOps_QA_Cloud_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.md", "text/markdown")
+    st.download_button("Download report", txt, f"DroneOps_QA_Validation_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.md", "text/markdown")
+
+elif page == "Validation Feedback":
+    st.markdown('<div class="section">Validation feedback</div>', unsafe_allow_html=True)
+    st.write("Use this page after showing the prototype to a drone user, pilot, trainer or operations manager.")
+    with st.form("feedback"):
+        respondent = st.text_input("Respondent name or initials")
+        org_type = st.selectbox("Type of user/team", ["Drone inspection company", "Industrial maintenance team", "Security team", "Emergency/rescue team", "University/research team", "Training school", "Hobby/prosumer", "Other"])
+        current_method = st.text_area("How do you currently track drone readiness, batteries and maintenance?")
+        usefulness = st.slider("How useful is this workflow?", 1, 5, 3)
+        missing = st.text_area("What is missing before you would use this?")
+        willingness = st.selectbox("Would you test this with real non-confidential data?", ["Yes", "Maybe", "No"])
+        contact = st.text_input("Optional contact email")
+        submitted = st.form_submit_button("Submit feedback")
+        if submitted:
+            payload = {
+                "submitted_at": datetime.now().isoformat(),
+                "respondent": respondent,
+                "org_type": org_type,
+                "current_method": current_method,
+                "usefulness": usefulness,
+                "missing_features": missing,
+                "willingness_to_test": willingness,
+                "contact": contact
+            }
+            try:
+                insert("validation_feedback", payload)
+                st.success("Feedback saved. Thank you.")
+            except Exception as e:
+                st.error("Could not save feedback. Make sure the validation_feedback table exists in Supabase.")
+                st.exception(e)
+
+elif page == "QR Workflow":
+    st.markdown('<div class="section">QR workflow</div>', unsafe_allow_html=True)
+    st.write("For validation, create QR codes that point to the deployed app URL. In later versions, QR links can open pre-filled pages for a specific Drone ID.")
+    st.code("Suggested QR label:\n\nDroneOps QA\nScan before flight\n1. Open Inspection Form\n2. Select Drone ID\n3. Select Battery ID\n4. Complete checklist\n5. Submit result\n\nIf Final Result = Fail, drone must not fly.")
+    st.warning("Current Streamlit pages do not yet support direct deep links to a specific form state. That should be a later improvement.")
 
 elif page == "Demo Controls":
-    st.warning("This modifies the Supabase demo database.")
+    st.markdown('<div class="section">Demo controls</div>', unsafe_allow_html=True)
+    admin_password = secret_value("ADMIN_PASSWORD", "")
+    if admin_password and not st.session_state.get("admin_access_granted"):
+        with st.form("admin_login"):
+            pw = st.text_input("Admin password", type="password")
+            if st.form_submit_button("Unlock demo controls"):
+                if pw == admin_password:
+                    st.session_state.admin_access_granted = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect admin password.")
+        st.stop()
+
+    st.warning("These controls modify the shared Supabase demo database.")
     if st.button("Reset cloud demo database"):
         reset_demo()
         st.success("Database reset to demo baseline.")
