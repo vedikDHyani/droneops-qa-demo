@@ -1,18 +1,22 @@
 
-# DroneOps QA V0.9.1 Polished Validation Demo
+# DroneOps QA V0.10 QR + Language Demo
 
-This version improves the validation demo UI.
+This version adds QR/barcode-style workflows and language switching.
 
-## New in V0.9.1
+## New in V0.10
 
-- Better password screen
-- Grouped sidebar navigation
-- More polished landing page
-- Operational summary cards
-- Clearer form instructions
-- More professional report page
-- Validation feedback remains prominent
-- Admin-only demo reset
+- QR code generation for drone asset labels
+- QR links can preselect Drone ID and Battery ID
+- Direct QR workflows for:
+  - Inspection Form
+  - Flight Log Form
+  - Maintenance Issue Form
+  - Dashboard
+- Language switch:
+  - English
+  - Deutsch
+- Optional `APP_BASE_URL` secret for correct QR links
+- More convenient navigation from scanned links
 
 ## Required Streamlit secrets
 
@@ -21,8 +25,11 @@ SUPABASE_URL = "https://your-project-id.supabase.co"
 SUPABASE_KEY = "your-publishable-key"
 DEMO_PASSWORD = "choose-a-demo-password"
 ADMIN_PASSWORD = "choose-a-separate-admin-password"
+
+# Recommended for QR generation:
+APP_BASE_URL = "https://your-streamlit-app-url.streamlit.app"
 ```
 
-## Supabase feedback table
+## Notes
 
-Run `SUPABASE_FEEDBACK_TABLE.sql` once if you have not already created the feedback table.
+This is still a validation demo. Do not enter real confidential operational data.
